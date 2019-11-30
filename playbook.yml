@@ -1,0 +1,229 @@
+- hosts: 127.0.0.1
+  connection: local
+  tasks:
+    - name: Ensure wsl.conf exists
+      become: yes
+      copy:
+        content: ""
+        dest: /etc/wsl.conf
+        force: no
+        group: root
+        owner: root
+        mode: 0644
+
+    - name: Update wsl.conf
+      become: yes
+      blockinfile:
+        path: /etc/wsl.conf
+        block: "{{ wsl_conf }}"
+
+    - name: Ensure .gitconfig exists
+      copy:
+        content: ""
+        dest: ~/.gitconfig
+        force: no
+        mode: 0644
+
+    - name: Update .gitconfig
+      blockinfile:
+        path: ~/.gitconfig
+        block: "{{ gitconfig }}"
+
+    # - name: Create a symbolic link to WINHOME
+    #   file:
+    #     src: "{{ env_winhome }}"
+    #     dest: ~/winhome
+    #     state: link
+
+    - name: Check if ~/.ssh exists
+      stat:
+        path: ~/.ssh
+      register: ssh_check
+
+    - name: Check if ~/.ssh/id_rsa key exists
+      stat:
+        path: ~/.ssh/id_rsa
+      register: ssh_key_check
+
+    - name: Check if $WINHOME/.ssh exists
+      stat:
+        path: "{{ env_winhome }}/.ssh"
+      register: winssh_check
+
+    - name: Check if $WINHOME/.ssh/id_rsa exists
+      stat:
+        path: "{{ env_winhome }}/.ssh/id_rsa"
+      register: winssh_key_check 
+
+    - name: "No SSH keys exist in $WINHOME or ~/.ssh"
+      when: not winssh_key_check.stat.exists and not ssh_key_check.stat.exists
+      block: 
+      - name: "No SSH keys exist in $WINHOME or ~/.ssh :: Create SSH key in ~/.ssh"
+        user:
+          name: "{{ env_logname }}"
+          generate_ssh_key: yes
+          ssh_key_passphrase: "{{ ansible_become_pass }}"
+      - name: "No SSH keys exist in $WINHOME or ~/.ssh :: Copy SSH key to $WINHOME/.ssh"
+        copy:
+          src: ~/.ssh/
+          dest: "{{ env_winhome }}/.ssh"
+          remote_src: yes
+        
+    - name: "SSH keys exist in $WINHOME but not in ~/.ssh :: Copy SSH key to ~/.ssh"
+      copy:
+        src: "{{ env_winhome }}/.ssh/"
+        dest: ~/.ssh
+        remote_src: yes
+      when: winssh_key_check.stat.exists and not ssh_key_check.stat.exists
+
+    - name: "SSH keys exist in ~/.ssh but not in $WINHOME :: Copy SSH key to $WINHOME/.ssh"
+      copy:
+        src: ~/.ssh/
+        dest: "{{ env_winhome }}/.ssh"
+        remote_src: yes
+      when: not winssh_key_check.stat.exists and ssh_key_check.stat.exists
+
+    - name: install keychain
+      become: yes
+      package:
+        name: keychain
+        state: present
+
+    - name: Updating .profile
+      lineinfile: 
+        dest: ~/.profile
+        insertafter: 'EOF'
+        state: present
+        regexp: "{{ item }}"
+        line: "{{ item }}"
+      with_items: "{{ profile_lines }}"
+
+    - name: Source .profile
+      shell: source ~/.profile
+      args:
+        executable: /bin/bash
+
+    - name: Install Galaxy Roles in the requirements.yml file
+      local_action:
+        command ansible-galaxy install \
+          --force \
+          --keep-scm-meta \
+          -r {{ playbook_dir }}/requirements.yml \
+          --roles-path={{ playbook_dir }}/roles
+      when: skip_roles != "yes"
+      
+    - name: Make sure the roles directory is being git ignored
+      shell: printf "*\n!.gitignore" > {{ playbook_dir }}/roles/.gitignore
+
+    - name: Install and configure Unison to sync ~/.ssh and $WINHOME/.ssh
+      include_role:
+        name: weareinteractive.unison
+      vars:
+        unison_configs:
+          - name: sync-ssh-keys
+            src: "{{ env_winhome }}/.ssh"
+            dest: "/home/{{ env_logname }}/.ssh"
+            batch: yes
+        unison_user: "{{ env_logname }}"
+        ansible_become: yes
+
+    - name: Install Apache
+      include_role:
+        name: geerlingguy.apache
+      vars:
+        ansible_become: yes
+
+    - name: Install PHP versions
+      include_role:
+        name: geerlingguy.php-versions
+      vars:
+        ansible_become: yes
+
+    - name: Install PHP  
+      include_role:
+        name: geerlingguy.php
+      vars:
+        ansible_become: yes
+
+    - name: Install Apache PHP FPM
+      include_role:
+        name: geerlingguy.apache-php-fpm
+      vars:
+        ansible_become: yes
+
+    - name: Install Composer  
+      include_role:
+        name: geerlingguy.composer
+      vars:
+        ansible_become: yes
+
+    - name: Install npm  
+      include_role:
+        name: robertdebock.npm
+      vars:
+        ansible_become: yes
+
+    - name: Install yarn  
+      include_role:
+        name: oefenweb.yarn
+      vars:
+        ansible_become: yes
+
+    - name: Install vagrant
+      include_role:
+        name: andrewrothstein.vagrant
+      vars:
+        ansible_become: yes
+
+    - name: Install Docker  
+      register: docker_result
+      include_role:
+        name: geerlingguy.docker
+      vars:
+        ansible_become: yes
+
+    - name: Log into docker group
+      shell: newgrp docker
+      when: not docker_result is skipped
+
+    # - name: Install aptitude using apt
+    #   apt: name=aptitude state=latest update_cache=yes force_apt_get=yes
+    #   become: yes
+
+    # - name: Install required system packages
+    #   apt: name={{ item }} state=latest update_cache=yes
+    #   become: yes
+    #   loop: [ 'apt-transport-https', 'ca-certificates', 'curl', 'software-properties-common', 'python3-pip', 'virtualenv', 'python3-setuptools']
+
+    # - name: Add Docker GPG apt Key
+    #   become: yes
+    #   apt_key:
+    #     url: https://download.docker.com/linux/ubuntu/gpg
+    #     state: present
+
+    # - name: Add Docker Repository
+    #   become: yes
+    #   apt_repository:
+    #     repo: deb https://download.docker.com/linux/ubuntu bionic stable
+    #     state: present
+
+    # - name: Update apt and install docker-ce
+    #   become: yes
+    #   apt: update_cache=yes name=docker-ce state=latest
+
+    # - name: Install Docker Module for Python
+    #   become: yes
+    #   pip:
+    #     executable: pip3
+    #     name: docker
+
+    - name: Install Lando package from github
+      become: yes
+      apt:
+        deb: "https://github.com/lando/lando/releases/download/{{ lando_version }}/lando-{{ lando_version }}.deb"
+
+    - name: Stop service apache2 so docker will run.
+      become: yes
+      service:
+        name: apache2
+        state: stopped

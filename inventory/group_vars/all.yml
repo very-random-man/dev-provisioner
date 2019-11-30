@@ -1,0 +1,36 @@
+php_version: 7.2
+php_display_errors: "On"
+php_date_timezone: "Europe/London"
+
+docker_users: 
+  - "{{ env_logname }}"
+
+lando_version: "v3.0.0-rc.23"
+
+ansible_become_pass: "{{ ansible_become_pass }}"
+skip_roles: "{{ skip_roles }}"
+
+profile_lines:
+  - export WINHOME={{ env_winhome }}
+  - export VAGRANT_WSL_ENABLE_WINDOWS_ACCESS="1"
+  - export DRUPALVM_ENV=wsl2-local
+  - keychain $HOME/.ssh/id_rsa
+  - source $HOME/.keychain/{{ env_hostname }}-sh
+
+wsl_conf: |
+  [automount]
+  options="metadata,umask=0033"
+
+gitconfig: |
+  [user]
+    name = jsherwin
+    email = 1931307+very-random-man@users.noreply.github.com
+
+  [core]
+    autocrlf = true
+    preloadindex = true
+    fscache = true
+    editor = vim
+
+  [gc]
+    auto = 256
