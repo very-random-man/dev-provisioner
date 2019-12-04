@@ -2,20 +2,25 @@ php_version: 7.2
 php_display_errors: "On"
 php_date_timezone: "Europe/London"
 
+apache_create_vhosts: false
+apache_remove_default_vhost: true
+apache_state: stopped
+
 docker_users: 
-  - "{{ env_logname }}"
+  - "{{ lookup('env','USER') }}"
 
 lando_version: "v3.0.0-rc.23"
 
-ansible_become_pass: "{{ ansible_become_pass }}"
 skip_roles: "{{ skip_roles }}"
 
-profile_lines:
-  - export WINHOME={{ env_winhome }}
-  - export VAGRANT_WSL_ENABLE_WINDOWS_ACCESS="1"
-  - export DRUPALVM_ENV=wsl2-local
-  - keychain $HOME/.ssh/id_rsa
-  - source $HOME/.keychain/{{ env_hostname }}-sh
+profile: |
+  lsb_release -d
+  export WINHOME={{ lookup('env','WINHOME') }}
+  export VAGRANT_WSL_ENABLE_WINDOWS_ACCESS="1"
+  export DRUPALVM_ENV=wsl2-local
+  keychain $HOME/.ssh/id_rsa
+  source $HOME/.keychain/{{ lookup('env','NAME') }}-sh
+  export JAMES=something
 
 wsl_conf: |
   [automount]
