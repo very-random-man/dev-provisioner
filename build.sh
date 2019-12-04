@@ -29,7 +29,7 @@ for arg in "$@"; do
   esac
 done
 
-while getopts ih o; do
+while getopts hs o; do
   case $o in
     h) usage;;
     s) skip_roles;;
@@ -64,7 +64,5 @@ cd $PROJECT_ROOT
 echo
 echo "Starting provisioning ..."
 echo
-echo "Sudo required to allow Ansible to install software will be used as ssh key passphrase for any created keys."
-echo
-read -s -p "[sudo] password for $LOGNAME:" PASSPHRASE
-ansible-playbook  --connection="local 127.0.0.1" ./playbook.yml --extra-vars "env_hostname=$HOSTNAME env_winhome=$WINHOME env_logname=$LOGNAME ansible_become_pass=$PASSPHRASE skip_roles=$SKIPROLES"
+
+ansible-playbook  --connection="local 127.0.0.1" ./playbook.yml --extra-vars "skip_roles=$SKIPROLES"
