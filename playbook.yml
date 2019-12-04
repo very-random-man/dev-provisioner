@@ -1,6 +1,27 @@
 - hosts: 127.0.0.1
   connection: local
+
+  vars_prompt:
+    - name: "ansible_become_pass"
+      prompt: "[sudo] password for {{ lookup('env','USER') }}"
+    - name: "ssh_key_passphrase"
+      prompt: "Please enter id_rsa SSH key passphrase"
+
   tasks:
+       
+    - name: Source .profile
+      expect:
+        command: /bin/bash -c "source /home/{{ lookup('env','USER') }}/.profile"
+        responses:
+          passphrase: "{{ ssh_key_passphrase }}\n"
+      # no_log: true   
+
+      
+    # - name: Source .profile
+    #   shell: source ~/.profile
+    #   args:
+    #     executable: /bin/bash
+
     - name: Ensure wsl.conf exists
       become: yes
       copy:
@@ -26,12 +47,12 @@
 
     - name: Update .gitconfig
       blockinfile:
-        path: ~/.gitconfig
+        path: /home/{{ lookup('env','USER') }}/.gitconfig
         block: "{{ gitconfig }}"
 
     # - name: Create a symbolic link to WINHOME
     #   file:
-    #     src: "{{ env_winhome }}"
+    #     src: "{{ lookup('env','WINHOME') }}"
     #     dest: ~/winhome
     #     state: link
 
@@ -47,31 +68,38 @@
 
     - name: Check if $WINHOME/.ssh exists
       stat:
-        path: "{{ env_winhome }}/.ssh"
+        path: "{{ lookup('env','WINHOME') }}/.ssh"
       register: winssh_check
 
     - name: Check if $WINHOME/.ssh/id_rsa exists
       stat:
-        path: "{{ env_winhome }}/.ssh/id_rsa"
+        path: "{{ lookup('env','WINHOME') }}/.ssh/id_rsa"
       register: winssh_key_check 
 
     - name: "No SSH keys exist in $WINHOME or ~/.ssh"
       when: not winssh_key_check.stat.exists and not ssh_key_check.stat.exists
       block: 
+      # - name:  "No SSH keys exist in $WINHOME or ~/.ssh :: Enter passphrase"
+        # pause:
+        #   prompt: "Please enter a passphrase for a new SSH key."
+        #   echo: no
+        # register: ssh_key_passphrase
       - name: "No SSH keys exist in $WINHOME or ~/.ssh :: Create SSH key in ~/.ssh"
+        no_log: true
         user:
-          name: "{{ env_logname }}"
+          name: "{{ lookup('env','USER') }}"
           generate_ssh_key: yes
-          ssh_key_passphrase: "{{ ansible_become_pass }}"
+          ssh_key_passphrase: "{{ ssh_key_passphrase }}"
+
       - name: "No SSH keys exist in $WINHOME or ~/.ssh :: Copy SSH key to $WINHOME/.ssh"
         copy:
           src: ~/.ssh/
-          dest: "{{ env_winhome }}/.ssh"
+          dest: "{{ lookup('env','WINHOME') }}/.ssh"
           remote_src: yes
         
     - name: "SSH keys exist in $WINHOME but not in ~/.ssh :: Copy SSH key to ~/.ssh"
       copy:
-        src: "{{ env_winhome }}/.ssh/"
+        src: "{{ lookup('env','WINHOME') }}/.ssh/"
         dest: ~/.ssh
         remote_src: yes
       when: winssh_key_check.stat.exists and not ssh_key_check.stat.exists
@@ -79,29 +107,48 @@
     - name: "SSH keys exist in ~/.ssh but not in $WINHOME :: Copy SSH key to $WINHOME/.ssh"
       copy:
         src: ~/.ssh/
-        dest: "{{ env_winhome }}/.ssh"
+        dest: "{{ lookup('env','WINHOME') }}/.ssh"
         remote_src: yes
       when: not winssh_key_check.stat.exists and ssh_key_check.stat.exists
 
-    - name: install keychain
+    - name: Install keychain
       become: yes
       package:
         name: keychain
         state: present
 
-    - name: Updating .profile
-      lineinfile: 
-        dest: ~/.profile
-        insertafter: 'EOF'
+    - name: Install pexpect
+      become: yes
+      package:
+        name: python-pexpect
         state: present
-        regexp: "{{ item }}"
-        line: "{{ item }}"
-      with_items: "{{ profile_lines }}"
 
-    - name: Source .profile
-      shell: source ~/.profile
-      args:
-        executable: /bin/bash
+    - name: Updating .profile
+      blockinfile:
+        path: /home/{{ lookup('env','USER') }}/.profile
+        block: "{{ profile }}"
+
+    # - name: Set keychain.
+    #   expect:
+    #     command: /bin/bash -c "/usr/bin/keychain $HOME/.ssh/id_rsa"
+    #     responses:
+    #       passphrase: "{{ ssh_key_passphrase }}\n"
+    #   no_log: true
+
+    # - name: Apply Keychain settings.
+    #   shell: source $HOME/.keychain/{{ lookup('env','NAME') }}-sh
+    #   args:
+    #     executable: /bin/bash
+
+    # - name: Source .profile
+    #   shell: source ~/.profile
+    #   # no_log: true
+    #   args:
+    #     executable: /bin/bash
+    #   #   stdin: "{{ ssh_key_passphrase }}"
+    #   #   stdin_add_newline: yes
+
+
 
     - name: Install Galaxy Roles in the requirements.yml file
       local_action:
@@ -121,10 +168,10 @@
       vars:
         unison_configs:
           - name: sync-ssh-keys
-            src: "{{ env_winhome }}/.ssh"
-            dest: "/home/{{ env_logname }}/.ssh"
+            src: "{{ lookup('env','WINHOME') }}/.ssh"
+            dest: "/home/{{ lookup('env','USER') }}/.ssh"
             batch: yes
-        unison_user: "{{ env_logname }}"
+        unison_user: "{{ lookup('env','USER') }}"
         ansible_become: yes
 
     - name: Install Apache
@@ -182,45 +229,30 @@
       vars:
         ansible_become: yes
 
+    # - name: Install virtualbox
+    #   include_role:
+    #     name: oefenweb.virtualbox
+    #   vars:
+    #     ansible_become: yes
+
+    - name: Reset ssh connection to group change immediately applies.
+      meta: reset_connection
+      ignore_errors: True
+
     - name: Log into docker group
-      shell: newgrp docker
+      shell: newgrp ; exit
       when: not docker_result is skipped
 
-    # - name: Install aptitude using apt
-    #   apt: name=aptitude state=latest update_cache=yes force_apt_get=yes
-    #   become: yes
-
-    # - name: Install required system packages
-    #   apt: name={{ item }} state=latest update_cache=yes
-    #   become: yes
-    #   loop: [ 'apt-transport-https', 'ca-certificates', 'curl', 'software-properties-common', 'python3-pip', 'virtualenv', 'python3-setuptools']
-
-    # - name: Add Docker GPG apt Key
-    #   become: yes
-    #   apt_key:
-    #     url: https://download.docker.com/linux/ubuntu/gpg
-    #     state: present
-
-    # - name: Add Docker Repository
-    #   become: yes
-    #   apt_repository:
-    #     repo: deb https://download.docker.com/linux/ubuntu bionic stable
-    #     state: present
-
-    # - name: Update apt and install docker-ce
-    #   become: yes
-    #   apt: update_cache=yes name=docker-ce state=latest
-
-    # - name: Install Docker Module for Python
-    #   become: yes
-    #   pip:
-    #     executable: pip3
-    #     name: docker
+    - name: Check if Lando is installed
+      stat:
+        path: /usr/local/bin/lando
+      register: lando_check
 
     - name: Install Lando package from github
       become: yes
       apt:
         deb: "https://github.com/lando/lando/releases/download/{{ lando_version }}/lando-{{ lando_version }}.deb"
+      when: not lando_check.stat.exists
 
     - name: Stop service apache2 so docker will run.
       become: yes
