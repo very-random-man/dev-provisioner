@@ -6,15 +6,19 @@
       prompt: "[sudo] password for {{ lookup('env','USER') }}"
     - name: "ssh_key_passphrase"
       prompt: "Please enter id_rsa SSH key passphrase"
+    - name: "git_username"
+      prompt: "Please enter a global git username"
+    - name: "git_email"
+      prompt: "Please enter a global git email"
 
   tasks:
-       
+
     - name: Source .profile
       expect:
         command: /bin/bash -c "source /home/{{ lookup('env','USER') }}/.profile"
         responses:
           passphrase: "{{ ssh_key_passphrase }}\n"
-      no_log: true   
+      no_log: true
 
     # - name: Source .profile
     #   shell: source ~/.profile
@@ -49,11 +53,13 @@
         path: /home/{{ lookup('env','USER') }}/.gitconfig
         block: "{{ gitconfig }}"
 
-    # - name: Create a symbolic link to WINHOME
-    #   file:
-    #     src: "{{ lookup('env','WINHOME') }}"
-    #     dest: ~/winhome
-    #     state: link
+    - name: Set git username
+      shell: "git config --global user.name \"{{ git_username }}\""
+      when: git_username|length > 0
+
+    - name: Set git email
+      shell: "git config --global user.email \"{{ git_email }}\""
+      when: git_email|length > 0
 
     - name: Check if ~/.ssh exists
       stat:
@@ -73,41 +79,41 @@
     - name: Check if $WINHOME/.ssh/id_rsa exists
       stat:
         path: "{{ lookup('env','WINHOME') }}/.ssh/id_rsa"
-      register: winssh_key_check 
+      register: winssh_key_check
 
     - name: "No SSH keys exist in $WINHOME or ~/.ssh"
       when: not winssh_key_check.stat.exists and not ssh_key_check.stat.exists
-      block: 
-      - name: "No SSH keys exist in $WINHOME or ~/.ssh :: Create SSH key in ~/.ssh"
-        no_log: true
-        user:
-          name: "{{ lookup('env','USER') }}"
-          generate_ssh_key: yes
-          ssh_key_passphrase: "{{ ssh_key_passphrase }}"
+      block:
+        - name: "No SSH keys exist in $WINHOME or ~/.ssh :: Create SSH key in ~/.ssh"
+          no_log: true
+          user:
+            name: "{{ lookup('env','USER') }}"
+            generate_ssh_key: yes
+            ssh_key_passphrase: "{{ ssh_key_passphrase }}"
 
-      - name: "No SSH keys exist in $WINHOME or ~/.ssh :: Copy SSH key to $WINHOME/.ssh"
-        copy:
-          src: ~/.ssh/
-          dest: "{{ lookup('env','WINHOME') }}/.ssh"
-          remote_src: yes
-        
+        - name: "No SSH keys exist in $WINHOME or ~/.ssh :: Copy SSH key to $WINHOME/.ssh"
+          copy:
+            src: ~/.ssh/
+            dest: "{{ lookup('env','WINHOME') }}/.ssh"
+            remote_src: yes
+
     - name: "SSH keys exist in $WINHOME but not in ~/.ssh"
       when: winssh_key_check.stat.exists and not ssh_key_check.stat.exists
       block:
 
-      - name: "SSH keys exist in $WINHOME but not in ~/.ssh :: Copy SSH keys to ~/.ssh"
-        copy:
-          src: "{{ lookup('env','WINHOME') }}/.ssh/"
-          dest: ~/.ssh
-          remote_src: yes
-      - name: Set private key permissions
-        file:
-          path: ~/.ssh/id_rsa
-          mode: '0600'
-      - name: Set public key permissions
-        file:
-          path: ~/.ssh/id_rsa.pub
-          mode: '0644'
+        - name: "SSH keys exist in $WINHOME but not in ~/.ssh :: Copy SSH keys to ~/.ssh"
+          copy:
+            src: "{{ lookup('env','WINHOME') }}/.ssh/"
+            dest: ~/.ssh
+            remote_src: yes
+        - name: Set private key permissions
+          file:
+            path: ~/.ssh/id_rsa
+            mode: '0600'
+        - name: Set public key permissions
+          file:
+            path: ~/.ssh/id_rsa.pub
+            mode: '0644'
 
     - name: "SSH keys exist in ~/.ssh but not in $WINHOME :: Copy SSH key to $WINHOME/.ssh"
       copy:
@@ -162,12 +168,12 @@
     - name: Install Galaxy Roles in the requirements.yml file
       local_action:
         command ansible-galaxy install \
-          --force \
-          --keep-scm-meta \
-          -r {{ playbook_dir }}/requirements.yml \
-          --roles-path={{ playbook_dir }}/roles
+        --force \
+        --keep-scm-meta \
+        -r {{ playbook_dir }}/requirements.yml \
+        --roles-path={{ playbook_dir }}/roles
       when: skip_roles != "yes"
-      
+
     - name: Make sure the roles directory is being git ignored
       shell: printf "*\n!.gitignore" > {{ playbook_dir }}/roles/.gitignore
 
@@ -183,50 +189,50 @@
         unison_user: "{{ lookup('env','USER') }}"
         ansible_become: yes
 
-    - name: Install PHP Versions 
+    - name: Install PHP Versions
       include_role:
         name: geerlingguy.php-versions
       vars:
         ansible_become: yes
 
-    - name: Install PHP  
+    - name: Install PHP
       include_role:
         name: geerlingguy.php
       vars:
         ansible_become: yes
 
-    - name: Install Composer  
+    - name: Install Composer
       include_role:
         name: geerlingguy.composer
       vars:
         ansible_become: yes
 
-    - name: Install npm  
+    - name: Install npm
       include_role:
         name: robertdebock.npm
       vars:
-        ansible_become: yes     
+        ansible_become: yes
 
     - name: DDEV - Check if exists
-      stat: 
+      stat:
         path: /usr/bin/ddev
-      register: ddev_binary 
+      register: ddev_binary
 
     - name: DDEV not installed. Let's do it.
-      when: not ddev_binary.stat.exists 
-      block: 
-      
-      - name: DDEV - Download key
-        shell: 'curl https://apt.fury.io/drud/gpg.key | sudo apt-key add -'
-        when: ddev_binary.stat.exists == False
+      when: not ddev_binary.stat.exists
+      block:
 
-      - name: DDEV - Install apt sources
-        shell: 'echo "deb https://apt.fury.io/drud/ * *" | sudo tee -a /etc/apt/sources.list.d/ddev.list'
-        when: ddev_binary.stat.exists == False
+        - name: DDEV - Download key
+          shell: 'curl https://apt.fury.io/drud/gpg.key | sudo apt-key add -'
+          when: ddev_binary.stat.exists == False
 
-      - name: DDEV - Install
-        shell: 'sudo apt update && sudo apt install -y ddev'
-        when: ddev_binary.stat.exists == False
+        - name: DDEV - Install apt sources
+          shell: 'echo "deb https://apt.fury.io/drud/ * *" | sudo tee -a /etc/apt/sources.list.d/ddev.list'
+          when: ddev_binary.stat.exists == False
 
-      - name: Install mkcert
-        shell: 'mkcert -install'
+        - name: DDEV - Install
+          shell: 'sudo apt update && sudo apt install -y ddev'
+          when: ddev_binary.stat.exists == False
+
+        - name: Install mkcert
+          shell: 'mkcert -install'
