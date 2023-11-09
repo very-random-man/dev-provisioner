@@ -8,8 +8,8 @@ This script will initiate ansible provisioning to build a dev environment.
 
 Usage: $PROGNAME [-h,--help] [-s,--skip-roles]
 
-  -h, --help:           This information.  
-  -s, --skip-roles:     Don't reinstall ansible roles via galaxy 
+  -h, --help:           This information.
+  -s, --skip-roles:     Don't reinstall ansible roles via galaxy
 
 EOF
   exit 1

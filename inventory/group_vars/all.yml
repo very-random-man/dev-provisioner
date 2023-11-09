@@ -1,15 +1,9 @@
-
 check_mode: no
 
 php_version: '8.1'
 php_display_errors: "On"
 php_date_timezone: "Europe/London"
 php_enable_webserver: false
-
-
-# apache_create_vhosts: false
-# apache_remove_default_vhost: true
-# apache_state: stopped
 
 skip_roles: "{{ skip_roles }}"
 
@@ -25,9 +19,6 @@ wsl_conf: |
   options="metadata,umask=0033"
 
 gitconfig: |
-  [user]
-    name = jsherwin
-    email = 1931307+very-random-man@users.noreply.github.com
 
   [core]
     autocrlf = true
