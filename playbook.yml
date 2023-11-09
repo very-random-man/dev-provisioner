@@ -14,9 +14,8 @@
         command: /bin/bash -c "source /home/{{ lookup('env','USER') }}/.profile"
         responses:
           passphrase: "{{ ssh_key_passphrase }}\n"
-      # no_log: true   
+      no_log: true   
 
-      
     # - name: Source .profile
     #   shell: source ~/.profile
     #   args:
@@ -79,11 +78,6 @@
     - name: "No SSH keys exist in $WINHOME or ~/.ssh"
       when: not winssh_key_check.stat.exists and not ssh_key_check.stat.exists
       block: 
-      # - name:  "No SSH keys exist in $WINHOME or ~/.ssh :: Enter passphrase"
-        # pause:
-        #   prompt: "Please enter a passphrase for a new SSH key."
-        #   echo: no
-        # register: ssh_key_passphrase
       - name: "No SSH keys exist in $WINHOME or ~/.ssh :: Create SSH key in ~/.ssh"
         no_log: true
         user:
@@ -97,12 +91,23 @@
           dest: "{{ lookup('env','WINHOME') }}/.ssh"
           remote_src: yes
         
-    - name: "SSH keys exist in $WINHOME but not in ~/.ssh :: Copy SSH key to ~/.ssh"
-      copy:
-        src: "{{ lookup('env','WINHOME') }}/.ssh/"
-        dest: ~/.ssh
-        remote_src: yes
+    - name: "SSH keys exist in $WINHOME but not in ~/.ssh"
       when: winssh_key_check.stat.exists and not ssh_key_check.stat.exists
+      block:
+
+      - name: "SSH keys exist in $WINHOME but not in ~/.ssh :: Copy SSH keys to ~/.ssh"
+        copy:
+          src: "{{ lookup('env','WINHOME') }}/.ssh/"
+          dest: ~/.ssh
+          remote_src: yes
+      - name: Set private key permissions
+        file:
+          path: ~/.ssh/id_rsa
+          mode: '0600'
+      - name: Set public key permissions
+        file:
+          path: ~/.ssh/id_rsa.pub
+          mode: '0644'
 
     - name: "SSH keys exist in ~/.ssh but not in $WINHOME :: Copy SSH key to $WINHOME/.ssh"
       copy:
@@ -110,6 +115,12 @@
         dest: "{{ lookup('env','WINHOME') }}/.ssh"
         remote_src: yes
       when: not winssh_key_check.stat.exists and ssh_key_check.stat.exists
+
+    - name: Install unzip
+      become: yes
+      package:
+        name: unzip
+        state: present
 
     - name: Install keychain
       become: yes
@@ -120,7 +131,7 @@
     - name: Install pexpect
       become: yes
       package:
-        name: python-pexpect
+        name: python3-pexpect
         state: present
 
     - name: Updating .profile
@@ -128,27 +139,25 @@
         path: /home/{{ lookup('env','USER') }}/.profile
         block: "{{ profile }}"
 
-    # - name: Set keychain.
-    #   expect:
-    #     command: /bin/bash -c "/usr/bin/keychain $HOME/.ssh/id_rsa"
-    #     responses:
-    #       passphrase: "{{ ssh_key_passphrase }}\n"
-    #   no_log: true
+    - name: Set keychain.
+      expect:
+        command: /bin/bash -c "/usr/bin/keychain $HOME/.ssh/id_rsa"
+        responses:
+          passphrase: "{{ ssh_key_passphrase }}\n"
+      no_log: true
 
-    # - name: Apply Keychain settings.
-    #   shell: source $HOME/.keychain/{{ lookup('env','NAME') }}-sh
-    #   args:
-    #     executable: /bin/bash
+    - name: Apply Keychain settings.
+      shell: source $HOME/.keychain/{{ lookup('env','NAME') }}-sh
+      args:
+        executable: /bin/bash
 
-    # - name: Source .profile
-    #   shell: source ~/.profile
-    #   # no_log: true
-    #   args:
-    #     executable: /bin/bash
-    #   #   stdin: "{{ ssh_key_passphrase }}"
-    #   #   stdin_add_newline: yes
-
-
+    - name: Source .profile
+      shell: source ~/.profile
+      # no_log: true
+      args:
+        executable: /bin/bash
+      #   stdin: "{{ ssh_key_passphrase }}"
+      #   stdin_add_newline: yes
 
     - name: Install Galaxy Roles in the requirements.yml file
       local_action:
@@ -174,13 +183,7 @@
         unison_user: "{{ lookup('env','USER') }}"
         ansible_become: yes
 
-    - name: Install Apache
-      include_role:
-        name: geerlingguy.apache
-      vars:
-        ansible_become: yes
-
-    - name: Install PHP versions
+    - name: Install PHP Versions 
       include_role:
         name: geerlingguy.php-versions
       vars:
@@ -189,12 +192,6 @@
     - name: Install PHP  
       include_role:
         name: geerlingguy.php
-      vars:
-        ansible_become: yes
-
-    - name: Install Apache PHP FPM
-      include_role:
-        name: geerlingguy.apache-php-fpm
       vars:
         ansible_become: yes
 
@@ -208,54 +205,28 @@
       include_role:
         name: robertdebock.npm
       vars:
-        ansible_become: yes
+        ansible_become: yes     
 
-    - name: Install yarn  
-      include_role:
-        name: oefenweb.yarn
-      vars:
-        ansible_become: yes
+    - name: DDEV - Check if exists
+      stat: 
+        path: /usr/bin/ddev
+      register: ddev_binary 
 
-    - name: Install vagrant
-      include_role:
-        name: andrewrothstein.vagrant
-      vars:
-        ansible_become: yes
+    - name: DDEV not installed. Let's do it.
+      when: not ddev_binary.stat.exists 
+      block: 
+      
+      - name: DDEV - Download key
+        shell: 'curl https://apt.fury.io/drud/gpg.key | sudo apt-key add -'
+        when: ddev_binary.stat.exists == False
 
-    - name: Install Docker  
-      register: docker_result
-      include_role:
-        name: geerlingguy.docker
-      vars:
-        ansible_become: yes
+      - name: DDEV - Install apt sources
+        shell: 'echo "deb https://apt.fury.io/drud/ * *" | sudo tee -a /etc/apt/sources.list.d/ddev.list'
+        when: ddev_binary.stat.exists == False
 
-    # - name: Install virtualbox
-    #   include_role:
-    #     name: oefenweb.virtualbox
-    #   vars:
-    #     ansible_become: yes
+      - name: DDEV - Install
+        shell: 'sudo apt update && sudo apt install -y ddev'
+        when: ddev_binary.stat.exists == False
 
-    - name: Reset ssh connection to group change immediately applies.
-      meta: reset_connection
-      ignore_errors: True
-
-    - name: Log into docker group
-      shell: newgrp ; exit
-      when: not docker_result is skipped
-
-    - name: Check if Lando is installed
-      stat:
-        path: /usr/local/bin/lando
-      register: lando_check
-
-    - name: Install Lando package from github
-      become: yes
-      apt:
-        deb: "https://github.com/lando/lando/releases/download/{{ lando_version }}/lando-{{ lando_version }}.deb"
-      when: not lando_check.stat.exists
-
-    - name: Stop service apache2 so docker will run.
-      become: yes
-      service:
-        name: apache2
-        state: stopped
+      - name: Install mkcert
+        shell: 'mkcert -install'
