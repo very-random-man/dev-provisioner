@@ -1,15 +1,15 @@
-php_version: 7.2
+
+check_mode: no
+
+php_version: '8.1'
 php_display_errors: "On"
 php_date_timezone: "Europe/London"
+php_enable_webserver: false
 
-apache_create_vhosts: false
-apache_remove_default_vhost: true
-apache_state: stopped
 
-docker_users: 
-  - "{{ lookup('env','USER') }}"
-
-lando_version: "v3.0.0-rc.23"
+# apache_create_vhosts: false
+# apache_remove_default_vhost: true
+# apache_state: stopped
 
 skip_roles: "{{ skip_roles }}"
 
@@ -17,10 +17,8 @@ profile: |
   lsb_release -d
   export WINHOME={{ lookup('env','WINHOME') }}
   export VAGRANT_WSL_ENABLE_WINDOWS_ACCESS="1"
-  export DRUPALVM_ENV=wsl2-local
   keychain $HOME/.ssh/id_rsa
   source $HOME/.keychain/{{ lookup('env','NAME') }}-sh
-  export JAMES=something
 
 wsl_conf: |
   [automount]
@@ -39,3 +37,8 @@ gitconfig: |
 
   [gc]
     auto = 256
+
+  [pull]
+    rebase = false
+  [init]
+    defaultBranch = main
