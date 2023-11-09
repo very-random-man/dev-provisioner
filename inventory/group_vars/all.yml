@@ -14,6 +14,15 @@ profile: |
   keychain $HOME/.ssh/id_rsa
   source $HOME/.keychain/{{ lookup('env','NAME') }}-sh
 
+bash: |
+  if [ "$color_prompt" = yes ]; then
+    PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w$(__git_ps1)\[\033[00m\]\$ '
+  else
+    PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w$(__git_ps1)\$ '
+  fi
+  
+  PROMPT_COMMAND="history -a; history -n"
+
 wsl_conf: |
   [automount]
   options="metadata,umask=0033"
