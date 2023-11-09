@@ -3,9 +3,5 @@
 - src: geerlingguy.php
 - src: geerlingguy.apache-php-fpm
 - src: geerlingguy.composer
-- src: geerlingguy.docker
 - src: robertdebock.npm
-- src: oefenweb.yarn
-- src: andrewrothstein.vagrant
 - src: weareinteractive.unison
-# - src: oefenweb.virtualbox
